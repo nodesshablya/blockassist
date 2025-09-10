@@ -1,25 +1,40 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-set -e -u
-set -o pipefail
+# === Абсолютные пути ===
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+LOG_DIR="$ROOT_DIR/logs"
+LOG_FILE="$LOG_DIR/yarn_setup.log"
 
-ROOT="$PWD"
+# Логи
+mkdir -p "$LOG_DIR"
+exec > >(tee -a "$LOG_FILE") 2>&1
 
-source ./scripts/node_env.sh
+echo "[yarn_setup] ROOT_DIR=$ROOT_DIR"
+echo "[yarn_setup] LOG_FILE=$LOG_FILE"
 
-cd modal-login
+# 1) Готовим Node/NVM/Yarn и .env через node_env.sh (как отдельный шаг)
+echo "[yarn_setup] Running node_env setup..."
+bash "$ROOT_DIR/scripts/node_env.sh"
 
-if [ ! -d .next ]; then
-    ### Install Node, NVM, Yarn if needed.
-    setup_node_nvm
-
-    ### Setup environment configuration
-    setup_environment
-
-    echo "Installing dependencies..." >> logs/yarn_setup.log
-    yarn install --immutable
-
-    echo "Building server..." >> logs/yarn_setup.log
-    yarn build
-
+# 2) Переходим в каталог приложения
+APP_DIR="$ROOT_DIR/modal-login"
+if [[ ! -d "$APP_DIR" ]]; then
+  echo "[yarn_setup] ERROR: App directory not found: $APP_DIR"
+  exit 1
 fi
+cd "$APP_DIR"
+
+# 3) Если ещё не билдили (.next нет) — ставим зависимости и билдим
+if [[ ! -d ".next" ]]; then
+  echo "[yarn_setup] Installing dependencies in $APP_DIR ..."
+  yarn install --immutable
+
+  echo "[yarn_setup] Building app in $APP_DIR ..."
+  yarn build
+else
+  echo "[yarn_setup] .next already exists — skipping install/build"
+fi
+
+echo "[yarn_setup] Done."
